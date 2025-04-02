@@ -9,8 +9,6 @@
   <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-storage.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-analytics.js"></script>
 
-  <script src="https://apis.google.com/js/api.js"></script>
-
   <style>
     * {
       box-sizing: border-box;
@@ -148,21 +146,6 @@
     const stopBtn = document.getElementById('endbutton');
     const trackingIdElem = document.getElementById('trackingId');
 
-    // Google API client setup
-    let GoogleAuth;
-    let folderId = "17Q0ZfXAsm7fieH1X5X71WkPN3LEjueM7"; // Google Drive folder ID
-
-    // Google OAuth Client setup
-    function initGoogleAPI() {
-      gapi.load('client:auth2', () => {
-        gapi.auth2.init({
-          client_id: '426872152845-93012n9kdeu0ag69f01scn7nag81a5vj.apps.googleusercontent.com',
-        }).then(() => {
-          GoogleAuth = gapi.auth2.getAuthInstance();
-        });
-      });
-    }
-
     // Function to start recording (initialize webcam and start video stream)
     async function startRecording() {
       const trackingId = trackingIdElem.value.trim();
@@ -193,7 +176,7 @@
 
         mediaRecorder.onstop = () => {
           const blob = new Blob(recordedChunks, { type: 'video/webm' });
-          uploadVideoToGoogleDrive(blob, trackingId);
+          uploadVideoToFirebase(blob, trackingId);
         };
 
         mediaRecorder.start();
@@ -219,28 +202,18 @@
       statusElem.classList.add('status-stopped');
     }
 
-    // Function to upload the video to Google Drive
-    function uploadVideoToGoogleDrive(blob, trackingId) {
+    // Function to upload the video to Firebase
+    function uploadVideoToFirebase(blob, trackingId) {
       const fileName = `${trackingId}.webm`;
-      
-      const formData = new FormData();
-      formData.append('file', blob, fileName);
-
-      const headers = new Headers();
-      headers.append("Authorization", "Bearer " + GoogleAuth.currentUser.get().getAuthResponse().access_token);
-
-      fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`, {
-        method: 'POST',
-        headers: headers,
-        body: formData
-      })
-      .then(response => response.json())
-      .then(data => {
-        console.log("Video uploaded successfully:", data);
+      const videoRef = ref(storage, 'videos/' + fileName);
+      uploadBytes(videoRef, blob).then(snapshot => {
+        const videoUrl = `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/videos%2F${fileName}?alt=media`;
+        console.log("Video uploaded successfully: ", videoUrl);
         statusElem.textContent = "Video uploaded successfully!";
-      })
-      .catch(err => {
-        console.error("Error uploading video:", err);
+        statusElem.classList.remove('status-stopped');
+        statusElem.classList.add('status-recording');
+      }).catch(error => {
+        console.log("Error uploading video: ", error);
         statusElem.textContent = "Error uploading video.";
       });
     }
@@ -268,10 +241,6 @@
     // Event listeners for start and stop buttons
     startBtn.addEventListener('click', startRecording);
     stopBtn.addEventListener('click', stopRecording);
-
-    // Initialize Google API client
-    initGoogleAPI();
-
   </script>
 
 </body>
