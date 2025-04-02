@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Packing Table Webcam Recorder</title>
+
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-storage.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-analytics.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f7f8fa;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      flex-direction: column;
+      text-align: center;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+
+    .container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 80%;
+      max-width: 1100px;
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      padding: 30px;
+      margin-bottom: 20px;
+    }
+
+    .video-container {
+      position: relative;
+      flex: 1;
+      margin-right: 20px;
+      border-radius: 10px;
+      overflow: hidden;
+      max-width: 60%;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 10px;
+    }
+
+    .controls {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .controls div {
+      margin-bottom: 15px;
+    }
+
+    input[type="text"] {
+      padding: 10px;
+      width: 80%;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+
+    button {
+      padding: 12px 30px;
+      font-size: 18px;
+      color: white;
+      background-color: #007bff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      width: 80%;
+      margin-top: 10px;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    #status {
+      font-size: 16px;
+      margin-top: 10px;
+      font-weight: bold;
+      color: #666;
+    }
+
+    .status-recording {
+      color: red;
+    }
+
+    .status-stopped {
+      color: green;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Packing Table Webcam Recorder</h1>
+
+  <div class="container">
+    <!-- Video Container -->
+    <div class="video-container">
+      <video id="webcam" autoplay></video>
+    </div>
+
+    <!-- Controls Section -->
+    <div class="controls">
+      <div>
+        <label for="trackingId">Tracking ID:</label>
+        <input type="text" id="trackingId" placeholder="Enter Tracking ID">
+      </div>
+
+      <div>
+        <button id="startbutton">Start Recording</button>
+        <button id="endbutton" style="display:none;">Stop Camera</button>
+      </div>
+
+      <p id="status">Status: Ready</p>
+    </div>
+  </div>
+
+  <script>
+    const videoElement = document.getElementById('webcam');
+    const statusElem = document.getElementById('status');
+    const startBtn = document.getElementById('startbutton');
+    const stopBtn = document.getElementById('endbutton');
+    const trackingIdElem = document.getElementById('trackingId');
+
+    // Function to start recording (initialize webcam and start video stream)
+    async function startRecording() {
+      const trackingId = trackingIdElem.value.trim();
+      if (!trackingId) {
+        alert('Please enter a tracking ID!');
+        return;
+      }
+
+      try {
+        // Access webcam using getUserMedia with 2K resolution
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: 2560, height: 1440 }
+        });
+        
+        // Attach the webcam stream to the video element
+        videoElement.srcObject = stream;
+
+        // Ensure the video is playing
+        videoElement.play();
+        
+        // Prepare MediaRecorder to record the video at 2K resolution
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        let recordedChunks = [];
+
+        mediaRecorder.ondataavailable = event => {
+          recordedChunks.push(event.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          uploadVideoToFirebase(blob, trackingId);
+        };
+
+        mediaRecorder.start();
+        startBtn.style.display = "none";
+        stopBtn.style.display = "block";
+        statusElem.textContent = "Status: Recording";
+        statusElem.classList.add('status-recording');
+
+      } catch (err) {
+        console.log("Error accessing webcam: ", err);
+        statusElem.textContent = "Error accessing webcam.";
+      }
+    }
+
+    // Function to stop recording
+    function stopRecording() {
+      const tracks = videoElement.srcObject.getTracks();
+      tracks.forEach(track => track.stop());  // Stop all tracks
+      startBtn.style.display = "block";
+      stopBtn.style.display = "none";
+      statusElem.textContent = "Status: Stopped";
+      statusElem.classList.remove('status-recording');
+      statusElem.classList.add('status-stopped');
+    }
+
+    // Function to upload the video to Firebase
+    function uploadVideoToFirebase(blob, trackingId) {
+      const fileName = `${trackingId}.webm`;
+      const videoRef = ref(storage, 'videos/' + fileName);
+      uploadBytes(videoRef, blob).then(snapshot => {
+        const videoUrl = `https://firebasestorage.googleapis.com/v0/b/${firebaseConfig.storageBucket}/o/videos%2F${fileName}?alt=media`;
+        console.log("Video uploaded successfully: ", videoUrl);
+        statusElem.textContent = "Video uploaded successfully!";
+        statusElem.classList.remove('status-stopped');
+        statusElem.classList.add('status-recording');
+      }).catch(error => {
+        console.log("Error uploading video: ", error);
+        statusElem.textContent = "Error uploading video.";
+      });
+    }
+
+    // Request access to the webcam and show the live feed
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      // Request webcam access with 2K resolution
+      navigator.mediaDevices.getUserMedia({ 
+        video: { width: 2560, height: 1440 }
+      })
+        .then((stream) => {
+          // Attach the webcam stream to the video element
+          videoElement.srcObject = stream;
+          statusElem.textContent = "Webcam is working and streaming!";
+        })
+        .catch((err) => {
+          // Handle errors (e.g., no camera access)
+          console.log("Error accessing webcam: ", err);
+          statusElem.textContent = "Error accessing webcam: " + err.message;
+        });
+    } else {
+      statusElem.textContent = "Your browser does not support webcam access.";
+    }
+
+    // Event listeners for start and stop buttons
+    startBtn.addEventListener('click', startRecording);
+    stopBtn.addEventListener('click', stopRecording);
+  </script>
+
+</body>
+</html>
