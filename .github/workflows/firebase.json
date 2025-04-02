@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "public",
+    "public": "public",  // Ensure this points to the correct folder where your index.html is located
     "rewrites": [
       {
         "source": "/**",
